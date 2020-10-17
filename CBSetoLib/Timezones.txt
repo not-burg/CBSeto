@@ -1,0 +1,13 @@
+Cen. Australia Standard Time
+Central America Standard Time
+Central European Standard Time
+Central Pacific Standard Time
+E. Europe Standard Time
+Eastern Standard Time
+Greenwich Standard Time
+Hawaiian Standard Time
+Mountain Standard Time
+New Zealand Standard Time
+Pacific Standard Time
+US Eastern Standard Time
+W. Europe Standard Time

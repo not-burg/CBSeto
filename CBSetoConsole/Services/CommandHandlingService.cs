@@ -45,15 +45,16 @@ namespace CBSetoConsole.Services
             var tasks = new List<Task> { AddCharacterReactions(userMessage) };
 
             //Tries to parse and execute a command if the userMessage has a mention prefix to the bot.
-            int argPos = 0;
-            if (userMessage.HasMentionPrefix(_discord.CurrentUser, ref argPos) == false) return;
+            int argPos = "s!".Length;
+            if (userMessage.HasStringPrefix("s!", ref argPos) == false) return;
             var context = new SocketCommandContext(_discord, userMessage);
             tasks.Add(_commands.ExecuteAsync(context, argPos, _services));
 
             await Task.WhenAll(tasks);
         }
 
-        private async Task CommandExecutedAsync(Optional<CommandInfo> command, ICommandContext context, IResult result)
+        private async Task CommandExecutedAsync(Optional<CommandInfo> command, 
+            ICommandContext context, IResult result)
         {
             if (command.IsSpecified == false || result.IsSuccess) return;
             await context.Channel.SendMessageAsync($"Command failed: {result.ErrorReason}");
@@ -68,7 +69,6 @@ namespace CBSetoConsole.Services
         private static IEnumerable<Task> GetReactionTasks(IEnumerable<Emoji> emojis, IMessage msg) => 
             emojis.Select(emoji => msg.AddReactionAsync(emoji));
 
-        //Retrieves Emoji associated with specific characters.
         private IEnumerable<Emoji> GetCharacterEmoji([NotNull] IEnumerable<string> names)
         {
             foreach (var name in names)

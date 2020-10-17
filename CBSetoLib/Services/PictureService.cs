@@ -10,7 +10,11 @@ namespace CBSetoLib.Services
         private readonly HttpClient _httpClient;
         public PictureService(HttpClient httpClient) => _httpClient = httpClient;
 
-        public async Task<Stream> GetPictureAsync(Uri uri) => 
-            await (await _httpClient.GetAsync(uri)).Content.ReadAsStreamAsync();
+        public async Task<Stream> GetPictureAsync(Uri uri)
+        {
+            var stream = await (await _httpClient.GetAsync(uri)).Content.ReadAsStreamAsync();
+            stream.Seek(0, SeekOrigin.Begin);
+            return stream;
+        }
     }
 }

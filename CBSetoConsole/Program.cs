@@ -16,7 +16,7 @@ namespace CBSetoConsole
 {
     internal class Program
     {
-        static async Task Main(string[] args)
+        private static async Task Main(string[] args)
         {
             await using var services = ConfigureServices();
 
@@ -50,6 +50,7 @@ namespace CBSetoConsole
             .AddSingleton<CommandHandlingService>()
             .AddSingleton<HttpClient>()
             .AddSingleton<CampBuddyCharacterService>()
+            .AddSingleton<TimeZoneService>()
             .AddSingleton<PictureService>()
                 .BuildServiceProvider();
     }

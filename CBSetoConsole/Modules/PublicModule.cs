@@ -1,26 +1,27 @@
-﻿using System.Collections.Generic;
-using System.IO;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Discord;
 using Discord.Commands;
 using System.Reflection;
+using System.Text;
 using CBSetoLib.Services;
 
 namespace CBSetoConsole.Modules
 {
     public class PublicModule : ModuleBase<SocketCommandContext>
     {
-        //Set by Dependency Injection
         public CampBuddyCharacterService CharacterService { get; set; }
+        public TimeZoneService TimeZoneService { get; set; }
         public PictureService PictureService { get; set; }
+        private readonly Uri _kittyUri = new Uri("https://cataas.com/cat");
 
         [Command("Character")] [Alias("character")]
         public async Task CharacterImageAsync([Remainder] string name)
         {
             if (CharacterService.ContainsCharacterImage(name, out var uri) == false) return;
             var stream = await PictureService.GetPictureAsync(uri);
-            stream.Seek(0, SeekOrigin.Begin);
             await Context.Channel.SendFileAsync(stream, $"{name}.png");
         }
 
@@ -57,10 +58,17 @@ namespace CBSetoConsole.Modules
         public Task GuildOnlyAsync() => ReplyAsync("Nothing to see here...yet");
 
         [Command("FormatC#")] [Alias("formatC#")]
-        public Task FormatCSharpAsync(params string[] codeLines)
+        public Task FormatCSharpAsync(string text)
         {
-            string formattedCode = string.Join('\n', "**C#**", "```CS", codeLines, "```");
+            string formattedCode = string.Join('\n', "**C#**", "```CS", text, "```");
             return ReplyAsync(formattedCode);
+        }
+
+        [Command("Timezones")]
+        [Alias("timezones")]
+        public Task GetTimeZonesAsync()
+        {
+            return ReplyAsync(string.Join('\n', TimeZoneService.GetTimeStrings()));
         }
 
         [Command("Help")] [Alias("help")]
@@ -70,10 +78,68 @@ namespace CBSetoConsole.Modules
             return ReplyAsync(string.Join('\n', commands));
         }
 
+        [Command("Kitty")] [Alias("kitty")]
+        public async Task KittyCommandAsync()
+        {
+            var kittyImage = await PictureService.GetPictureAsync(_kittyUri);
+            await Context.Channel.SendFileAsync(kittyImage, "kitty.png");
+        }
+
+        [Command("RichEmbed")] [Alias("richEmbed")]
+        public Task SendRichEmbed()
+        {
+            var embed = new EmbedBuilder
+            {
+                Title = "Hey, there, fellow camper!", 
+                Description = "My name's Seto, I'll be your guide to Cabin 3"
+            };
+            embed.AddField("Find my profile", "https://www.blitsgames.com/characters/");
+
+            return ReplyAsync(embed: embed.Build());
+        }
+
         private static IEnumerable<string> GetCommandAttributesText() =>
             typeof(PublicModule).GetMethods()
                 .Where(method => method.IsPublic && method.ReturnType == typeof(Task))
                 .SelectMany(method => method.GetCustomAttributes<CommandAttribute>(true))
                 .Select(commandAttribute => commandAttribute.Text);
+
+        [Command("Reflect")]
+        public Task Reflect([Remainder] string targetCommand)
+        {
+            var methods = typeof(PublicModule)
+                .GetMethods()
+                .Where(m => m.IsPublic && m.GetCustomAttributes<CommandAttribute>(true).Any());
+
+            var method = methods.FirstOrDefault(m => m.GetCustomAttribute<CommandAttribute>(true).Text.ToLower().Contains(targetCommand.ToLower()));
+
+            if (method is null) return ReplyAsync("No method found");
+
+            var methodBody = method.GetMethodBody();
+
+            var reply = new StringBuilder();
+            reply.AppendLine("Method signature:");
+
+            reply.AppendLine("```CS");
+            reply.AppendLine(method.ToString());
+            reply.AppendLine("```");
+
+            var localVariables = methodBody.LocalVariables.Select(variable => $"{variable.LocalType?.Name}").ToList();
+            if (localVariables.Any())
+            {
+                reply.AppendLine("Local variables:");
+                reply.AppendLine("```CS");
+                localVariables.ForEach(localVariable => reply.AppendLine(localVariable));
+                reply.AppendLine("```");
+            }
+            
+            reply.AppendLine("MSIL in hexadecimal:");
+
+            reply.Append('`');
+            reply.Append(string.Join(' ', methodBody.GetILAsByteArray().Select(il => il.ToString("X").PadRight(2,'0'))));
+            reply.Append('`');
+
+            return ReplyAsync(string.Concat(reply.ToString().Take(1997)) + "...");
+        }
     }
 }
