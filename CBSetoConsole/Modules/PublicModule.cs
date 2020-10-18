@@ -7,6 +7,7 @@ using Discord.Commands;
 using System.Reflection;
 using System.Text;
 using CBSetoLib.Services;
+using Discord.WebSocket;
 
 namespace CBSetoConsole.Modules
 {
@@ -16,95 +17,137 @@ namespace CBSetoConsole.Modules
         public TimeZoneService TimeZoneService { get; set; }
         public PictureService PictureService { get; set; }
         private readonly Uri _kittyUri = new Uri("https://cataas.com/cat");
+        private readonly Uri _bottomThoughts = new Uri("https://cdn.discordapp.com/attachments/746301814214754315/767061098070278144/image0.png");
 
-        [Command("Character")] [Alias("character")]
+        [Command("Character")] [Summary("Retrieves info about a camper.")]
         public async Task CharacterImageAsync([Remainder] string name)
         {
-            if (CharacterService.ContainsCharacterImage(name, out var uri) == false) return;
-            var stream = await PictureService.GetPictureAsync(uri);
-            await Context.Channel.SendFileAsync(stream, $"{name}.png");
+            if (CharacterService.TryGetCharacter(name, out var character) == false)
+            {
+                await ReplyAsync("Unfortunately there's no camper by that name :("); 
+                return;
+            }
+
+            var embedBuilder = new EmbedBuilder { Title = $"{character.Info.Name} (#{character.Id})" };
+            embedBuilder.AddField("Height: ", character.Info.Height + "cm", true);
+            embedBuilder.AddField("Weight: ", character.Info.Weight + "kg", true);
+            embedBuilder.ImageUrl = character.ImageUri.AbsoluteUri;
+            embedBuilder.AddField("Learn more: ", character.ProfileUri);
+
+            await ReplyAsync(embed: embedBuilder.Build());
         }
 
-        [Command("UserInfo")] [Alias("userinfo")]
+        [Command("UserInfo")] [Summary("Retrieves info about a user.")]
         public async Task UserInfoAsync(IUser user = null)
         {
             user ??= Context.User;
 
-            var userInfo = string.Join('\n', 
-                $"{user.Username}#{user.Discriminator}",
-                user.CreatedAt.UtcDateTime.ToString("D"));
+            var embedBuilder = new EmbedBuilder
+            {
+                Title = $"{user.Username}#{user.Discriminator}",
+                ImageUrl = user.GetAvatarUrl() 
+            };
+            embedBuilder.AddField("Id: ", user.Id);
+            embedBuilder.AddField("Created Date: ", user.CreatedAt.UtcDateTime.ToLongDateString());
 
-            await ReplyAsync(userInfo);
+            await ReplyAsync(embed: embedBuilder.Build());
         }
 
-        [Command("Ban")] [Alias("ban")]
+        [Command("BottomThoughts")] [Summary("All I have are bottom thoughts.")]
+        public async Task BottomThoughts()
+        {
+            var bottomThoughts = await PictureService.GetPictureAsync(_bottomThoughts);
+            await Context.Channel.SendFileAsync(bottomThoughts, "bottomThoughts.png");
+        }
+
+        [Command("Ban")]
         [RequireContext(ContextType.Guild)]
         [RequireUserPermission(GuildPermission.BanMembers)]
         [RequireBotPermission(GuildPermission.BanMembers)]
+        [Summary("Banks a specified user for a specified reason (if given).")]
         public async Task BanUserAsync(IGuildUser user, [Remainder] string reason = null)
         {
             await user.Guild.AddBanAsync(user, reason: reason);
             await ReplyAsync($"User {user.Username}#{user.Discriminator} ({user.Id}) has been banned.");
         }
 
-        [Command("Echo")] [Alias("echo")]
-        public Task EchoAsync([Remainder] string text) => ReplyAsync('\u200B' + text);
-
-        [Command("List")] [Alias("list")]
-        public Task ListAsync(params string[] objects) => ReplyAsync("You listed: " + string.Join("; ", objects));
-
-        [Command("GuildOnly")] [Alias("guildOnly")]
+        [Command("Sweep")]
         [RequireContext(ContextType.Guild)]
-        public Task GuildOnlyAsync() => ReplyAsync("Nothing to see here...yet");
-
-        [Command("FormatC#")] [Alias("formatC#")]
-        public Task FormatCSharpAsync(string text)
+        [RequireUserPermission(GuildPermission.ManageMessages)]
+        [RequireBotPermission(GuildPermission.ManageMessages)]
+        [Summary("Deletes a specified number of messages in the channel.")]
+        public async Task Sweep([Remainder] int messageCount)
         {
-            string formattedCode = string.Join('\n', "**C#**", "```CS", text, "```");
-            return ReplyAsync(formattedCode);
+            if (messageCount <= 0)
+            {
+                await ReplyAsync("Silly, number of messages to delete needs to be >= 0");
+                return;
+            }
+            var deletionTasks = new List<Task>(messageCount / 100);
+
+            int messagedDeleted = 0;
+            if (messageCount >= 99)
+            {
+                int hundreds = messageCount / 100;
+                for (int i = 1; i < hundreds + 1; i++)
+                {
+                    var messages = await Context.Channel.GetMessagesAsync().FlattenAsync();
+                    deletionTasks.Add(DeleteMessagesAsync(messages));
+                    messagedDeleted += 100;
+                }
+            }
+            int remainder = messageCount % 100;
+            var remainingMessages = await Context.Channel.GetMessagesAsync(remainder).FlattenAsync();
+            deletionTasks.Add(DeleteMessagesAsync(remainingMessages));
+            messagedDeleted += remainder;
+
+            await Task.WhenAll(deletionTasks);
+            await ReplyAsync($"🧹 Deleted {messagedDeleted} messages.");
         }
 
-        [Command("Timezones")]
-        [Alias("timezones")]
-        public Task GetTimeZonesAsync()
+        private Task DeleteMessagesAsync(IEnumerable<IMessage> messages) => 
+            (Context.Channel as SocketTextChannel).DeleteMessagesAsync(messages);
+
+        [Command("Echo")] [Summary("Repeats a user's message.")]
+        public Task EchoAsync([Remainder] string text) => ReplyAsync('\u200B' + text);
+
+        [Command("Timezones")] [Summary("Shows time in common timezones.")]
+        public Task TimezonesCommand()
         {
-            return ReplyAsync(string.Join('\n', TimeZoneService.GetTimeStrings()));
+            var timeZoneGroups = TimeZoneService.GetTimeKeyValuePairs().GroupBy(
+                timeZone => timeZone.Value,
+                timeZone => timeZone.Key,
+                (time, timeZones) => new KeyValuePair<string, string>(time, string.Join('\n', timeZones)));
+
+            var embedBuilder = new EmbedBuilder { Title = "Current time in common timezones: " };
+            foreach (var (time, timeZones) in timeZoneGroups)
+                embedBuilder.AddField(time, timeZones, true);
+
+            return ReplyAsync(embed: embedBuilder.Build());
         }
 
         [Command("Help")] [Alias("help")]
         public Task HelpCommandAsync()
         {
-            var commands = GetCommandAttributesText();
-            return ReplyAsync(string.Join('\n', commands));
+            var embedBuilder = new EmbedBuilder {Title = "Commands: "};
+
+            var methods = typeof(PublicModule).GetMethods()
+                .Where(m => m.IsPublic && m.GetCustomAttributes<CommandAttribute>(true).Any()).Select(info => new 
+                {
+
+                });
+
+            return ReplyAsync(embed: embedBuilder.Build());
         }
 
-        [Command("Kitty")] [Alias("kitty")]
+        [Command("Kitty")] [Alias("kitty")] [Summary("Retrieves a random cat image from https://cataas.com/cat.")]
         public async Task KittyCommandAsync()
         {
             var kittyImage = await PictureService.GetPictureAsync(_kittyUri);
             await Context.Channel.SendFileAsync(kittyImage, "kitty.png");
         }
 
-        [Command("RichEmbed")] [Alias("richEmbed")]
-        public Task SendRichEmbed()
-        {
-            var embed = new EmbedBuilder
-            {
-                Title = "Hey, there, fellow camper!", 
-                Description = "My name's Seto, I'll be your guide to Cabin 3"
-            };
-            embed.AddField("Find my profile", "https://www.blitsgames.com/characters/");
-
-            return ReplyAsync(embed: embed.Build());
-        }
-
-        private static IEnumerable<string> GetCommandAttributesText() =>
-            typeof(PublicModule).GetMethods()
-                .Where(method => method.IsPublic && method.ReturnType == typeof(Task))
-                .SelectMany(method => method.GetCustomAttributes<CommandAttribute>(true))
-                .Select(commandAttribute => commandAttribute.Text);
-
-        [Command("Reflect")]
+        [Command("Reflect")] [Summary("Shows the underlying programming metadata of a specified command.")]
         public Task Reflect([Remainder] string targetCommand)
         {
             var methods = typeof(PublicModule)
@@ -113,7 +156,8 @@ namespace CBSetoConsole.Modules
 
             var method = methods.FirstOrDefault(m => m.GetCustomAttribute<CommandAttribute>(true).Text.ToLower().Contains(targetCommand.ToLower()));
 
-            if (method is null) return ReplyAsync("No method found");
+            if (method is null) 
+                return ReplyAsync("No method found");
 
             var methodBody = method.GetMethodBody();
 
@@ -139,7 +183,10 @@ namespace CBSetoConsole.Modules
             reply.Append(string.Join(' ', methodBody.GetILAsByteArray().Select(il => il.ToString("X").PadRight(2,'0'))));
             reply.Append('`');
 
-            return ReplyAsync(string.Concat(reply.ToString().Take(1997)) + "...");
+            string replyStr = reply.ToString();
+            return replyStr.Length > 2000 ? 
+                ReplyAsync(string.Concat(replyStr.Take(1997)) + "...") : 
+                ReplyAsync(replyStr);
         }
     }
 }

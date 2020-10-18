@@ -19,9 +19,9 @@ namespace CBSetoLib.Services
             _timeZones = new Dictionary<string, TimeZoneInfo>(keyValuePairs);
         }
 
-        public IEnumerable<string> GetTimeStrings() =>
+        public IEnumerable<KeyValuePair<string, string>> GetTimeKeyValuePairs() =>
             _timeZones.Select(timeZone =>
-                timeZone.Key + '\t' + TimeZoneInfo.ConvertTime(DateTime.Now, TimeZoneInfo.Local, timeZone.Value)
-                    .ToLongTimeString());
+                new KeyValuePair<string, string>(timeZone.Key, 
+                    TimeZoneInfo.ConvertTime(DateTime.Now, TimeZoneInfo.Local, timeZone.Value).ToShortTimeString()));
     }
 }

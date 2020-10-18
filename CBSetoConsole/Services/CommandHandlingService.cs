@@ -22,6 +22,7 @@ namespace CBSetoConsole.Services
         private readonly DiscordSocketClient _discord;
         private readonly IServiceProvider _services;
         private readonly CampBuddyCharacterService _characterService;
+        private const string SetoPrefix = "s!";
 
         public CommandHandlingService(IServiceProvider services)
         {
@@ -35,8 +36,11 @@ namespace CBSetoConsole.Services
             _discord.MessageReceived += MessageReceivedAsync;
         }
 
-        public async Task InitializeAsync() => 
+        public async Task InitializeAsync()
+        {
+            _commands.AddTypeReader(typeof(string[]), new StringArrayTypeReader());
             await _commands.AddModulesAsync(Assembly.GetEntryAssembly(), _services);
+        }
 
         private async Task MessageReceivedAsync(SocketMessage message)
         {
@@ -44,9 +48,8 @@ namespace CBSetoConsole.Services
 
             var tasks = new List<Task> { AddCharacterReactions(userMessage) };
 
-            //Tries to parse and execute a command if the userMessage has a mention prefix to the bot.
-            int argPos = "s!".Length;
-            if (userMessage.HasStringPrefix("s!", ref argPos) == false) return;
+            int argPos = SetoPrefix.Length;
+            if (userMessage.HasStringPrefix(SetoPrefix, ref argPos) == false) return;
             var context = new SocketCommandContext(_discord, userMessage);
             tasks.Add(_commands.ExecuteAsync(context, argPos, _services));
 
